@@ -17,7 +17,26 @@ describe("catalog procedures", () => {
 
     expect(products.length).toBeGreaterThan(0);
     expect(products.every(product => product.images.length > 0)).toBe(true);
-    expect(products.some(product => product.name.includes("WH-1000XM5"))).toBe(true);
+    expect(products.every(product => product.isFeatured)).toBe(true);
+  });
+
+  it("exposes the expanded catalog with unique product galleries", async () => {
+    const caller = appRouter.createCaller(createPublicContext());
+    const products = await caller.catalog.products({ limit: 60 });
+    const slugs = new Set(products.map(product => product.slug));
+    const galleries = products.map(product => product.images.slice(0, 2).join("|"));
+
+    expect(products.length).toBeGreaterThanOrEqual(36);
+    expect(slugs.size).toBe(products.length);
+    expect(new Set(galleries).size).toBe(products.length);
+    expect(products.every(product => product.images.length >= 2)).toBe(true);
+  });
+
+  it("caps New Arrivals at twelve products", async () => {
+    const caller = appRouter.createCaller(createPublicContext());
+    const arrivals = await caller.catalog.products({ sort: "newest", limit: 12 });
+
+    expect(arrivals).toHaveLength(12);
   });
 
   it("finds products by search term across the catalog", async () => {

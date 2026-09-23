@@ -144,6 +144,8 @@ export const orders = mysqlTable(
     total: int("total").notNull(),
     address: text("address").notNull(),
     paymentMethod: mysqlEnum("paymentMethod", ["upi", "credit_card", "debit_card", "cod"]).notNull(),
+    paymentStatus: mysqlEnum("paymentStatus", ["completed", "pending", "failed"]).default("pending").notNull(),
+    paymentReference: varchar("paymentReference", { length: 80 }),
     expectedDelivery: timestamp("expectedDelivery"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },

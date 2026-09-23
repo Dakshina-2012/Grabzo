@@ -30,7 +30,7 @@ const productListInput = z.object({
   search: z.string().optional(),
   category: z.string().optional(),
   vendor: z.string().optional(),
-  sort: z.enum(["relevance", "price_low", "price_high", "rating"]).optional(),
+  sort: z.enum(["relevance", "newest", "price_low", "price_high", "rating"]).optional(),
   featured: z.boolean().optional(),
   deal: z.boolean().optional(),
   limit: z.number().int().min(1).max(60).optional(),

@@ -587,3 +587,77 @@ h1 em, h2 em { color: var(--purple); font-style: normal; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+
+/* Launch moment: the full Grabzo lockup arrives before the editorial shell. */
+.brand-intro { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; overflow: hidden; background: var(--deep); animation: brand-intro-exit .42s .82s var(--ease-out) forwards; pointer-events: none; }
+.brand-intro-panel { position: relative; z-index: 2; width: min(360px, 72vw); display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 26px 30px 22px; background: rgba(255,255,255,.97); box-shadow: 0 24px 80px rgba(0,0,0,.28); animation: brand-logo-arrive .72s var(--ease-out) both; }
+.brand-intro-panel img { width: 100%; height: auto; }
+.brand-intro-panel span { color: var(--deep); font-size: 10px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
+.brand-intro-panel i { padding-inline: 4px; color: var(--purple); font-style: normal; }
+.brand-intro-orbit { position: absolute; border: 1px solid rgba(216,194,255,.35); border-radius: 50%; animation: brand-orbit 2.4s linear infinite; }
+.brand-intro-orbit--one { width: 72vw; height: 32vw; transform: rotate(-18deg); }
+.brand-intro-orbit--two { width: 34vw; height: 90vh; transform: rotate(24deg); animation-duration: 3.4s; }
+@keyframes brand-logo-arrive { from { opacity: 0; transform: translateY(15px) scale(.96) rotate(-1deg); } to { opacity: 1; transform: translateY(0) scale(1) rotate(0); } }
+@keyframes brand-orbit { to { transform: rotate(342deg); } }
+@keyframes brand-intro-exit { to { opacity: 0; visibility: hidden; } }
+
+.account-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; padding-bottom: 28px; }
+.account-choice { min-height: 300px; display: flex; flex-direction: column; align-items: flex-start; padding: 28px; border: 1px solid var(--line); background: #fff; color: var(--ink); text-align: left; cursor: pointer; transition: transform .22s var(--ease-out), border .22s, box-shadow .22s; }
+.account-choice:hover { border-color: #c9b8fb; box-shadow: 0 18px 40px rgba(36,16,92,.1); transform: translateY(-4px); }
+.account-choice--accent { background: var(--lavender); border-color: #dfd2ff; }
+.account-choice-icon { width: 52px; height: 52px; display: grid; place-items: center; margin-bottom: 31px; border-radius: 50%; background: var(--deep); color: #fff; }
+.account-choice--accent .account-choice-icon { background: var(--purple); }
+.account-choice h2 { margin-top: 8px; font-size: 32px; }
+.account-choice p { max-width: 320px; margin-top: 10px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.account-choice .button { margin-top: auto; pointer-events: none; }
+.account-note { display: flex; align-items: center; justify-content: center; gap: 9px; padding-bottom: 96px; color: var(--muted); font-size: 11px; text-align: center; }
+.account-note svg { flex: 0 0 auto; color: var(--green); }
+.account-dashboard { padding-bottom: 110px; }
+.account-profile-card { display: flex; align-items: center; gap: 17px; padding: 25px; background: #fff; border: 1px solid var(--line); }
+.account-avatar { width: 58px; height: 58px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; background: var(--deep); color: #fff; font: 700 24px "DM Sans", sans-serif; }
+.account-profile-card h2 { margin-top: 5px; font-size: 25px; }
+.account-profile-card p { margin-top: 3px; color: var(--muted); font-size: 11px; }
+.account-profile-card .verified-badge { margin-left: auto; }
+.account-link-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; }
+.account-link-grid button { min-height: 165px; display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 20px; border: 1px solid var(--line); background: #fff; color: var(--ink); text-align: left; cursor: pointer; transition: transform .2s var(--ease-out), box-shadow .2s, border .2s; }
+.account-link-grid button:hover { border-color: #c9b8fb; box-shadow: 0 15px 30px rgba(36,16,92,.08); transform: translateY(-3px); }
+.account-link-grid button > svg:first-child { color: var(--purple); margin-bottom: auto; }
+.account-link-grid button > svg:last-child { align-self: flex-end; margin-top: auto; color: var(--purple); }
+.account-link-grid strong { font-size: 13px; }
+.account-link-grid span { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.mobile-menu-logout { display: inline-flex; align-items: center; gap: 9px; margin-top: 16px; padding: 13px 0; background: transparent; color: #b94b32; font-size: 12px; font-weight: 700; cursor: pointer; }
+.order-success-banner { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; padding: 20px 23px; background: #eee8ff; border: 1px solid #dfd2ff; }
+.order-success-icon { width: 43px; height: 43px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; background: var(--purple); color: #fff; }
+.order-success-banner h2 { margin-top: 5px; font-size: 22px; }
+.order-success-banner p { margin-top: 5px; color: var(--muted); font-size: 11px; }
+.order-card-payment { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding-block: 15px; border-bottom: 1px solid var(--line); }
+.order-card-payment > div { display: flex; flex-direction: column; gap: 4px; }
+.order-card-payment strong { font-size: 11px; }
+.order-card-payment small { color: var(--muted); font-size: 10px; }
+.payment-complete { color: var(--green) !important; }
+.payment-pending { color: #b36b28 !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-intro, .brand-intro-panel, .brand-intro-orbit { animation: none; }
+  .brand-intro { opacity: 0; visibility: hidden; }
+}
+
+@media (max-width: 760px) {
+  .brand-intro-panel { width: min(300px, 78vw); padding: 19px 21px 17px; gap: 10px; }
+  .brand-intro-panel span { font-size: 8px; }
+  .brand-intro-orbit--one { width: 128vw; height: 58vw; }
+  .brand-intro-orbit--two { width: 54vw; height: 100vh; }
+  .account-choice-grid { display: block; padding-bottom: 16px; }
+  .account-choice + .account-choice { margin-top: 12px; }
+  .account-choice { min-height: 255px; padding: 22px; }
+  .account-choice-icon { margin-bottom: 22px; }
+  .account-choice h2 { font-size: 28px; }
+  .account-note { align-items: flex-start; padding-bottom: 65px; text-align: left; }
+  .account-profile-card { align-items: flex-start; flex-wrap: wrap; padding: 19px; }
+  .account-profile-card .verified-badge { width: 100%; margin-left: 75px; }
+  .account-link-grid { grid-template-columns: repeat(2, 1fr); }
+  .order-success-banner { align-items: flex-start; padding: 16px; }
+  .order-success-banner h2 { font-size: 19px; }
+  .order-card-payment { grid-template-columns: 1fr; gap: 13px; }
+}

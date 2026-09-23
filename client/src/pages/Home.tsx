@@ -15,9 +15,12 @@ import {
   Heart,
   House,
   LayoutDashboard,
+  LogOut,
+  MapPin,
   Menu,
   Package,
   Plus,
+  ReceiptText,
   Search,
   ShieldCheck,
   ShoppingBag,
@@ -25,6 +28,7 @@ import {
   Star,
   Store,
   Truck,
+  UserPlus,
   UserRound,
   WalletCards,
   X,
@@ -60,9 +64,25 @@ function Logo({ compact = false }: { compact?: boolean }) {
   return <Link href="/" className={`brand-lockup ${compact ? "brand-lockup--compact" : ""}`} aria-label="Grabzo home"><img src={LOGO} alt="Grabzo — Shop More Live Better" /></Link>;
 }
 
+function BrandIntro() {
+  const [visible, setVisible] = useState(() => {
+    try { return sessionStorage.getItem("grabzo-brand-intro-seen") !== "1"; } catch { return true; }
+  });
+  useEffect(() => {
+    if (!visible) return;
+    const timer = window.setTimeout(() => {
+      setVisible(false);
+      try { sessionStorage.setItem("grabzo-brand-intro-seen", "1"); } catch {}
+    }, 1250);
+    return () => window.clearTimeout(timer);
+  }, [visible]);
+  if (!visible) return null;
+  return <div className="brand-intro" role="status" aria-label="Opening Grabzo"><div className="brand-intro-orbit brand-intro-orbit--one" /><div className="brand-intro-orbit brand-intro-orbit--two" /><div className="brand-intro-panel"><img src={LOGO} alt="Grabzo" /><span>Shop More <i>•</i> Live Better</span></div></div>;
+}
+
 function Header({ cartCount, onMenu, query, setQuery }: { cartCount: number; onMenu: () => void; query: string; setQuery: (value: string) => void }) {
   const [, navigate] = useLocation();
-  const { user, isAuthenticated } = useAuth();
+  const { user } = useAuth();
   const submitSearch = (event: React.FormEvent) => { event.preventDefault(); navigate(`/products${query.trim() ? `?search=${encodeURIComponent(query.trim())}` : ""}`); };
   return <>
     <header className="site-header">
@@ -70,10 +90,10 @@ function Header({ cartCount, onMenu, query, setQuery }: { cartCount: number; onM
         <button className="icon-button mobile-only" onClick={onMenu} aria-label="Open menu"><Menu size={21} /></button>
         <Logo />
         <nav className="desktop-nav" aria-label="Primary navigation">
-          <Link href="/products">Explore</Link>
+          <Link href="/products" onClick={() => navigate("/products")}>Explore</Link>
           <Link href="/vendors">Vendors</Link>
           <Link href="/products?deal=true">Deals</Link>
-          <Link href="/products?sort=newest">New arrivals</Link>
+          <Link href="/products?sort=newest" onClick={() => navigate("/products?sort=newest")}>New arrivals</Link>
         </nav>
         <form className="header-search" onSubmit={submitSearch}>
           <Search size={17} />
@@ -83,7 +103,7 @@ function Header({ cartCount, onMenu, query, setQuery }: { cartCount: number; onM
         <div className="header-actions">
           <Link href="/wishlist" className="header-action" aria-label="Wishlist"><Heart size={19} /><span className="desktop-only">Wishlist</span></Link>
           <Link href="/cart" className="header-action cart-action" aria-label="Cart"><ShoppingBag size={19} /><span className="desktop-only">Bag</span>{cartCount > 0 && <b>{cartCount}</b>}</Link>
-          <Link href={isAuthenticated ? "/orders" : "/account"} className="header-action account-action" aria-label="Account"><CircleUserRound size={20} /><span className="desktop-only">{user?.name?.split(" ")[0] ?? "Account"}</span></Link>
+          <Link href="/account" className="header-action account-action" aria-label="Account"><CircleUserRound size={20} /><span className="desktop-only">{user?.name?.split(" ")[0] ?? "Account"}</span></Link>
         </div>
       </div>
     </header>
@@ -92,8 +112,9 @@ function Header({ cartCount, onMenu, query, setQuery }: { cartCount: number; onM
 }
 
 function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { isAuthenticated, logout } = useAuth();
   if (!open) return null;
-  return <div className="mobile-menu-backdrop" onClick={onClose}><aside className="mobile-menu" onClick={event => event.stopPropagation()}><div className="mobile-menu-top"><Logo compact /><button className="icon-button" onClick={onClose} aria-label="Close menu"><X size={20} /></button></div><div className="mobile-menu-links"><Link href="/products" onClick={onClose}>Explore <ArrowUpRight size={16} /></Link><Link href="/vendors" onClick={onClose}>Vendors <ArrowUpRight size={16} /></Link><Link href="/products?deal=true" onClick={onClose}>Deals <ArrowUpRight size={16} /></Link><Link href="/orders" onClick={onClose}>My orders <ArrowUpRight size={16} /></Link><Link href="/wishlist" onClick={onClose}>Wishlist <ArrowUpRight size={16} /></Link></div><div className="mobile-menu-note"><span className="eyebrow">The Grabzo edit</span><p>Products with a point of view, from sellers worth knowing.</p></div></aside></div>;
+  return <div className="mobile-menu-backdrop" onClick={onClose}><aside className="mobile-menu" onClick={event => event.stopPropagation()}><div className="mobile-menu-top"><Logo compact /><button className="icon-button" onClick={onClose} aria-label="Close menu"><X size={20} /></button></div><div className="mobile-menu-links"><Link href="/products" onClick={onClose}>Explore <ArrowUpRight size={16} /></Link><Link href="/vendors" onClick={onClose}>Vendors <ArrowUpRight size={16} /></Link><Link href="/products?deal=true" onClick={onClose}>Deals <ArrowUpRight size={16} /></Link><Link href="/orders" onClick={onClose}>My orders <ArrowUpRight size={16} /></Link><Link href="/wishlist" onClick={onClose}>Wishlist <ArrowUpRight size={16} /></Link><Link href="/account" onClick={onClose}>Account <ArrowUpRight size={16} /></Link>{isAuthenticated && <button className="mobile-menu-logout" onClick={() => { void logout().then(() => { toast.success("You’ve been logged out."); onClose(); }); }}><LogOut size={16} /> Log out</button>}</div><div className="mobile-menu-note"><span className="eyebrow">The Grabzo edit</span><p>Products with a point of view, from sellers worth knowing.</p></div></aside></div>;
 }
 
 function Footer() {
@@ -139,15 +160,21 @@ function HomePage({ products, categories, vendors, deals, onAdd, onWishlist, wis
 
 function ProductsPage({ onAdd, onWishlist, wishedIds }: { onAdd: (product: any) => void; onWishlist: (product: any) => void; wishedIds: number[] }) {
   const [location] = useLocation();
-  const params = useMemo(() => new URLSearchParams(location.split("?")[1] ?? ""), [location]);
+  const params = useMemo(() => new URLSearchParams(typeof window !== "undefined" ? window.location.search : location.split("?")[1] ?? ""), [location]);
+  const isNewArrivals = params.get("sort") === "newest";
   const [search, setSearch] = useState(params.get("search") ?? "");
   const [category, setCategory] = useState(params.get("category") ?? "");
   const [sort, setSort] = useState<any>(params.get("sort") ?? "relevance");
+  useEffect(() => {
+    setSearch(params.get("search") ?? "");
+    setCategory(params.get("category") ?? "");
+    setSort(params.get("sort") ?? "relevance");
+  }, [params]);
   const { data: categories = [] } = trpc.catalog.categories.useQuery();
   const { data: vendors = [] } = trpc.catalog.vendors.useQuery();
-  const { data: products = [], isLoading } = trpc.catalog.products.useQuery({ search: search || undefined, category: category || undefined, sort, deal: params.get("deal") === "true", featured: params.get("featured") === "true", limit: 60 });
+  const { data: products = [], isLoading } = trpc.catalog.products.useQuery({ search: search || undefined, category: category || undefined, sort, deal: params.get("deal") === "true", featured: params.get("featured") === "true", limit: isNewArrivals ? 12 : 60 });
   const [filtersOpen, setFiltersOpen] = useState(false);
-  return <><PageIntro eyebrow="The marketplace edit" title={params.get("deal") === "true" ? "Deals worth grabbing." : "Products with a point of view."} description="Explore a more considered way to shop — across independent sellers, modern essentials, and the things you didn't know you needed." action={<span className="result-count">{products.length} products</span>} /><div className="container products-layout"><aside className={`filter-sidebar ${filtersOpen ? "filter-sidebar--open" : ""}`}><div className="filter-top"><span className="eyebrow">Refine</span><button className="icon-button mobile-only" onClick={() => setFiltersOpen(false)}><X size={18} /></button></div><label className="filter-label">Search<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Try headphones" /></label><div className="filter-group"><span className="filter-label">Category</span><button className={!category ? "filter-option is-active" : "filter-option"} onClick={() => setCategory("")}>All products <span>({products.length})</span></button>{categories.map((item: any) => <button className={category === item.name ? "filter-option is-active" : "filter-option"} onClick={() => setCategory(item.name)} key={item.id}>{item.name}</button>)}</div><div className="filter-group"><span className="filter-label">Seller</span>{vendors.slice(0, 5).map((vendor: any) => <button className="filter-option" onClick={() => setSearch(vendor.name)} key={vendor.id}>{vendor.name}</button>)}</div><button className="text-link filter-reset" onClick={() => { setSearch(""); setCategory(""); setSort("relevance"); }}>Reset filters <X size={14} /></button></aside><main className="products-main"><div className="products-toolbar"><button className="filter-trigger mobile-only" onClick={() => setFiltersOpen(true)}><Filter size={16} /> Filters</button><span className="desktop-only">Showing {products.length} results</span><label className="sort-select">Sort by <select value={sort} onChange={event => setSort(event.target.value)}><option value="relevance">Relevance</option><option value="price_low">Price: low to high</option><option value="price_high">Price: high to low</option><option value="rating">Top rated</option></select><ChevronDown size={14} /></label></div>{isLoading ? <LoadingGrid /> : <ProductGrid products={products} onAdd={onAdd} onWishlist={onWishlist} wishedIds={wishedIds} empty="No products matched that edit." />}</main></div></>;
+  return <><PageIntro eyebrow={isNewArrivals ? "Freshly listed" : "The marketplace edit"} title={params.get("deal") === "true" ? "Deals worth grabbing." : isNewArrivals ? "New arrivals, just in." : "Products with a point of view."} description="Explore a more considered way to shop — across independent sellers, modern essentials, and the things you didn't know you needed." action={<span className="result-count">{products.length}{isNewArrivals ? " of 12" : ""} products</span>} /><div className="container products-layout"><aside className={`filter-sidebar ${filtersOpen ? "filter-sidebar--open" : ""}`}><div className="filter-top"><span className="eyebrow">Refine</span><button className="icon-button mobile-only" onClick={() => setFiltersOpen(false)}><X size={18} /></button></div><label className="filter-label">Search<input value={search} onChange={event => setSearch(event.target.value)} placeholder="Try headphones" /></label><div className="filter-group"><span className="filter-label">Category</span><button className={!category ? "filter-option is-active" : "filter-option"} onClick={() => setCategory("")}>All products <span>({products.length})</span></button>{categories.map((item: any) => <button className={category === item.name ? "filter-option is-active" : "filter-option"} onClick={() => setCategory(item.name)} key={item.id}>{item.name}</button>)}</div><div className="filter-group"><span className="filter-label">Seller</span>{vendors.slice(0, 5).map((vendor: any) => <button className="filter-option" onClick={() => setSearch(vendor.name)} key={vendor.id}>{vendor.name}</button>)}</div><button className="text-link filter-reset" onClick={() => { setSearch(""); setCategory(""); setSort(isNewArrivals ? "newest" : "relevance"); }}>Reset filters <X size={14} /></button></aside><main className="products-main"><div className="products-toolbar"><button className="filter-trigger mobile-only" onClick={() => setFiltersOpen(true)}><Filter size={16} /> Filters</button><span className="desktop-only">Showing {products.length} results</span><label className="sort-select">Sort by <select value={sort} onChange={event => setSort(event.target.value)}><option value="relevance">Relevance</option><option value="newest">Newest</option><option value="price_low">Price: low to high</option><option value="price_high">Price: high to low</option><option value="rating">Top rated</option></select><ChevronDown size={14} /></label></div>{isLoading ? <LoadingGrid /> : <ProductGrid products={products} onAdd={onAdd} onWishlist={onWishlist} wishedIds={wishedIds} empty="No products matched that edit." />}</main></div></>;
 }
 
 function LoadingGrid() { return <div className="product-grid">{Array.from({ length: 8 }).map((_, index) => <div className="skeleton-card" key={index}><div className="skeleton skeleton-image" /><div className="skeleton skeleton-line" /><div className="skeleton skeleton-line skeleton-line--short" /></div>)}</div>; }
@@ -214,10 +241,21 @@ function CheckoutPage({ guest, clearGuest }: { guest: GuestCartLine[]; clearGues
   return <><PageIntro eyebrow="Almost yours" title="Checkout." description="A calm, simple checkout. No real payment is processed in this prototype." /><div className="container checkout-layout"><div className="checkout-main"><div className="checkout-steps"><span className={step >= 1 ? "is-active" : ""}>01 <b>Delivery</b></span><span className={step >= 2 ? "is-active" : ""}>02 <b>Review</b></span><span className={step >= 3 ? "is-active" : ""}>03 <b>Payment</b></span></div>{step === 1 && <div className="checkout-panel"><div className="checkout-panel-heading"><div><span className="eyebrow">Step 01</span><h2>Where should we send it?</h2></div><House size={20} /></div><div className="form-grid">{Object.entries(address).map(([key, value]) => <label key={key}>{key === "house" ? "House / building" : key.charAt(0).toUpperCase() + key.slice(1)}<input value={value} required onChange={event => setAddress(current => ({ ...current, [key]: event.target.value }))} /></label>)}</div><button className="button button--primary" onClick={() => setStep(2)}>Review order <ArrowRight size={16} /></button></div>}{step === 2 && <div className="checkout-panel"><div className="checkout-panel-heading"><div><span className="eyebrow">Step 02</span><h2>Everything look right?</h2></div><Package size={20} /></div><div className="checkout-review-list">{items.map((item: any) => <div key={item.productId}><img src={item.image ?? imageOf(item)} alt="" /><span><strong>{item.name}</strong><small>{item.vendorName} · Qty {item.quantity}</small></span><strong>{money(item.price * item.quantity)}</strong></div>)}</div><div className="checkout-panel-actions"><button className="text-link" onClick={() => setStep(1)}><ChevronLeft size={15} /> Back</button><button className="button button--primary" onClick={() => setStep(3)}>Continue to payment <ArrowRight size={16} /></button></div></div>}{step === 3 && <div className="checkout-panel"><div className="checkout-panel-heading"><div><span className="eyebrow">Step 03</span><h2>Choose how to pay.</h2></div><CreditCard size={20} /></div><div className="payment-options">{[["upi", "UPI", "Fast and familiar"], ["credit_card", "Credit card", "Visa, Mastercard, Amex"], ["debit_card", "Debit card", "Your bank card"], ["cod", "Cash on delivery", "Pay when it arrives"]].map(([value, name, note]) => <button className={payment === value ? "payment-option is-selected" : "payment-option"} onClick={() => setPayment(value)} key={value}><span className="payment-radio" /> <span><strong>{name}</strong><small>{note}</small></span><ChevronRight size={16} /></button>)}</div><div className="checkout-panel-actions"><button className="text-link" onClick={() => setStep(2)}><ChevronLeft size={15} /> Back</button><button className="button button--primary" disabled={createOrder.isPending} onClick={placeOrder}>{createOrder.isPending ? "Placing order…" : "Place order"} <ArrowRight size={16} /></button></div></div>}</div><aside className="checkout-summary cart-summary"><span className="eyebrow">Summary</span><div><span>Subtotal</span><strong>{money(serverCart?.subtotal ?? subtotal)}</strong></div><div><span>Delivery</span><strong>{serverCart?.delivery ? money(serverCart.delivery) : "Free"}</strong></div><div><span>Tax</span><strong>{money(serverCart?.tax ?? Math.round(subtotal * 0.05))}</strong></div><div className="summary-total"><span>Total</span><strong>{money(serverCart?.total ?? subtotal)}</strong></div><span className="summary-note"><ShieldCheck size={14} /> Mock payment — no charge will be made.</span></aside></div></>;
 }
 
+function AccountPage() {
+  const { user, isAuthenticated, loading, logout } = useAuth();
+  const [, navigate] = useLocation();
+  if (loading) return <div className="container loading-page"><div className="spinner" /></div>;
+  if (!isAuthenticated) return <><PageIntro eyebrow="Your Grabzo account" title="Make room for good finds." description="Save your edit, sync your bag, and keep every order in one calm place." /><div className="container account-choice-grid"><button className="account-choice" onClick={() => startLogin()}><span className="account-choice-icon"><CircleUserRound size={24} /></span><span className="eyebrow">Already have an account?</span><h2>Sign in</h2><p>Pick up where you left off and see your saved products, bag, and orders.</p><span className="button button--primary">Existing user <ArrowRight size={16} /></span></button><button className="account-choice account-choice--accent" onClick={() => startLogin()}><span className="account-choice-icon"><UserPlus size={24} /></span><span className="eyebrow">New to Grabzo?</span><h2>Create your account</h2><p>Join the marketplace edit and keep your favourite discoveries close.</p><span className="button button--dark">New user <ArrowRight size={16} /></span></button></div><div className="container account-note"><ShieldCheck size={17} /><span>Secure sign-in is handled by Manus OAuth. Grabzo never stores your password in the marketplace.</span></div></>;
+  return <><PageIntro eyebrow="Your Grabzo account" title={`Good to see you, ${user?.name?.split(" ")[0] ?? "there"}.`} description="Manage your profile, saved products, and every order from one place." action={<button className="button button--dark" onClick={() => logout().then(() => toast.success("You’ve been logged out."))}><LogOut size={16} /> Log out</button>} /><div className="container account-dashboard"><div className="account-profile-card"><span className="account-avatar">{(user?.name ?? "G").slice(0, 1).toUpperCase()}</span><div><span className="eyebrow">Signed in as</span><h2>{user?.name ?? "Grabzo shopper"}</h2><p>{user?.email ?? "Your secure Grabzo account"}</p></div><span className="verified-badge"><Check size={12} /> Secure account</span></div><div className="account-link-grid"><button onClick={() => navigate("/orders")}><ReceiptText size={20} /><strong>Your orders</strong><span>Track deliveries and payment status.</span><ArrowUpRight size={15} /></button><button onClick={() => navigate("/wishlist")}><Heart size={20} /><strong>Wishlist</strong><span>Return to the things you saved.</span><ArrowUpRight size={15} /></button><button onClick={() => navigate("/cart")}><ShoppingBag size={20} /><strong>Your bag</strong><span>Review your current edit.</span><ArrowUpRight size={15} /></button><button onClick={() => navigate("/seller")}><Store size={20} /><strong>Sell on Grabzo</strong><span>Explore the seller studio.</span><ArrowUpRight size={15} /></button></div></div></>;
+}
+
 function OrdersPage() {
   const { data: orders = [], isLoading } = trpc.orders.list.useQuery(undefined, { enabled: useAuth().isAuthenticated });
   const [location] = useLocation();
-  return <AuthGate><PageIntro eyebrow="Your Grabzo account" title="Your orders." description={location.includes("success=") ? "Your order is on its way to becoming part of your everyday." : "Keep track of every good decision."} /> <div className="container orders-list">{isLoading ? <LoadingGrid /> : orders.length ? orders.map((order: any) => <div className="order-card" key={order.id}><div className="order-card-top"><div><span className="eyebrow">{order.orderNumber}</span><strong>{new Date(order.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</strong></div><span className="status-pill"><Check size={13} /> {order.status.replaceAll("_", " ")}</span></div><div className="order-card-items">{order.items.map((item: any) => <div key={item.id}><img src={item.image ?? FALLBACK_IMAGE} alt="" /><span>{item.productName}</span><small>Qty {item.quantity}</small></div>)}</div><div className="order-card-bottom"><span>Expected delivery <strong>{order.expectedDelivery ? new Date(order.expectedDelivery).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "Soon"}</strong></span><strong>{money(order.total)}</strong><Link className="text-link" href={`/product/${order.items[0]?.productId ?? ""}`}>View details <ArrowUpRight size={14} /></Link></div></div>) : <div className="empty-state"><Package size={30} /><h3>No orders yet.</h3><p>When you find something good, it will live here.</p><Link className="button button--dark" href="/products">Start exploring</Link></div>}</div></AuthGate>;
+  const formatPayment = (method: string) => ({ upi: "UPI", credit_card: "Credit card", debit_card: "Debit card", cod: "Cash on delivery" }[method] ?? method);
+  const successNumber = new URLSearchParams(typeof window !== "undefined" ? window.location.search : location.split("?")[1] ?? "").get("success");
+  const successOrder = successNumber ? orders.find((order: any) => order.orderNumber === successNumber) : null;
+  return <AuthGate><PageIntro eyebrow="Your Grabzo account" title="Your orders." description={successOrder ? "Your order is confirmed. Here’s everything you need to know." : "Keep track of every good decision."} />{successOrder && <div className="container order-success-banner"><div className="order-success-icon"><Check size={23} /></div><div><span className="eyebrow">Order confirmed · {successOrder.orderNumber}</span><h2>{successOrder.paymentStatus === "completed" ? "Payment completed successfully." : "Cash on delivery selected."}</h2><p>{successOrder.paymentStatus === "completed" ? `${formatPayment(successOrder.paymentMethod)} payment received. Reference ${successOrder.paymentReference}.` : `Your ${money(successOrder.total)} payment is due when your order arrives.`}</p></div></div>}<div className="container orders-list">{isLoading ? <LoadingGrid /> : orders.length ? orders.map((order: any) => <div className="order-card" key={order.id}><div className="order-card-top"><div><span className="eyebrow">{order.orderNumber}</span><strong>{new Date(order.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</strong></div><span className="status-pill"><Check size={13} /> {order.status.replaceAll("_", " ")}</span></div><div className="order-card-items">{order.items.map((item: any) => <div key={item.id}><img src={item.image ?? FALLBACK_IMAGE} alt="" /><span>{item.productName}</span><small>Qty {item.quantity}</small></div>)}</div><div className="order-card-payment"><div><span className="eyebrow">Payment</span><strong>{formatPayment(order.paymentMethod)}</strong><small className={order.paymentStatus === "completed" ? "payment-complete" : "payment-pending"}>{order.paymentStatus === "completed" ? `Completed · ${order.paymentReference}` : "Pending · due at delivery"}</small></div><div><span className="eyebrow">Delivering to</span><strong>{order.address?.city ?? "Your address"}{order.address?.pincode ? ` · ${order.address.pincode}` : ""}</strong><small>{order.address?.name ?? "Grabzo shopper"}</small></div></div><div className="order-card-bottom"><span>Expected delivery <strong>{order.expectedDelivery ? new Date(order.expectedDelivery).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "Soon"}</strong></span><strong>{money(order.total)}</strong><Link className="text-link" href={`/product/${order.items[0]?.productId ?? ""}`}>View item <ArrowUpRight size={14} /></Link></div></div>) : <div className="empty-state"><Package size={30} /><h3>No orders yet.</h3><p>When you find something good, it will live here.</p><Link className="button button--dark" href="/products">Start exploring</Link></div>}</div></AuthGate>;
 }
 
 function WishlistPage({ allProducts, onAdd, onWishlist, wishedIds }: { allProducts: any[]; onAdd: (product: any) => void; onWishlist: (product: any) => void; wishedIds: number[] }) {
@@ -262,10 +300,11 @@ export default function Home() {
   else if (path.startsWith("/store/")) page = <VendorPage {...commonProps} />;
   else if (path === "/cart") page = <CartPage guest={guest.lines} onUpdateGuest={guest.update} onClearGuest={guest.clear} onAdd={addToCart} onLogin={() => startLogin()} />;
   else if (path === "/checkout") page = <CheckoutPage guest={guest.lines} clearGuest={guest.clear} />;
-  else if (path === "/orders" || path === "/account") page = <OrdersPage />;
+  else if (path === "/orders") page = <OrdersPage />;
+  else if (path === "/account") page = <AccountPage />;
   else if (path === "/wishlist") page = <WishlistPage allProducts={allProducts} onAdd={addToCart} onWishlist={toggleWishlist} wishedIds={wishedIds} />;
   else if (path === "/seller") page = <DashboardPage />;
   else if (path === "/admin") page = <DashboardPage admin />;
   else page = <HomePage products={homeProducts} categories={categories} vendors={vendors} deals={deals} onAdd={addToCart} onWishlist={toggleWishlist} wishedIds={wishedIds} />;
-  return <div className="app-shell"><Header cartCount={cartCount ?? 0} onMenu={() => setMenuOpen(true)} query={query} setQuery={setQuery} /><MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} /><main>{page}</main><Footer /></div>;
+  return <div className="app-shell"><BrandIntro /><Header cartCount={cartCount ?? 0} onMenu={() => setMenuOpen(true)} query={query} setQuery={setQuery} /><MobileMenu open={menuOpen} onClose={() => setMenuOpen(false)} /><main>{page}</main><Footer /></div>;
 }
