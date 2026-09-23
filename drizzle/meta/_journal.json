@@ -1,5 +1,27 @@
 {
   "version": "7",
   "dialect": "mysql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1790182590408,
+      "tag": "0000_yielding_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1790182905166,
+      "tag": "0001_true_korath",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1790183643625,
+      "tag": "0002_cloudy_kabuki",
+      "breakpoints": true
+    }
+  ]
 }
