@@ -28,3 +28,24 @@
 - Desktop, tablet, and 390px mobile previews verified.
 - Order confirmation verified for both COD and completed UPI states.
 - All seeded image URLs return successful HTTP responses.
+
+## Second-Pass Completion
+
+- Added protected order-detail retrieval by order number with ownership enforcement.
+- Added guarded cancellation for placed/confirmed orders, cancellation reason, and cancellation timestamp.
+- Added reorder-to-bag behavior with stock-aware unavailable-item reporting.
+- Added persisted status timeline, print-friendly receipt action, care/support mailto action, and payment/delivery detail panels.
+- Added verified-purchase rating form on order detail and product detail pages.
+- Added server-side purchase eligibility, one-review-per-customer-product protection, server-derived reviewer identity, and product rating aggregate updates.
+- Added real post-transaction “Manage order” links from checkout success and order cards.
+- Added explicit vendor permission middleware and customer-safe restricted workspace states.
+- Fixed narrow mobile order-card action wrapping and desktop timeline label spacing.
+- Verified authenticated order detail at desktop and 390px mobile widths, plus catalog, account, orders, missing-order, seller, and admin routes.
+
+## Second-Pass Validation
+
+- `pnpm check` passes.
+- `pnpm test` passes: 4 files, 12 tests.
+- `pnpm build` passes.
+- Migration `drizzle/0004_wide_surge.sql` was reviewed and applied successfully.
+- Live screenshots verified desktop, mobile, New Arrivals, account, orders, missing-order recovery, order detail, seller, and admin states.

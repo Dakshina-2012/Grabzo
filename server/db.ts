@@ -329,10 +329,85 @@ export async function listReviews(productId: number) {
   return db.select().from(reviews).where(eq(reviews.productId, productId)).orderBy(desc(reviews.createdAt));
 }
 
+async function enrichOrders(userId: number, orderRows: (typeof orders.$inferSelect)[]) {
+  const db = await getDb();
+  if (!db || !orderRows.length) return [];
+  const orderIds = orderRows.map(order => order.id);
+  const itemRows = await db.select().from(orderItems).where(inArray(orderItems.orderId, orderIds));
+  const productIds = Array.from(new Set(itemRows.map(item => item.productId)));
+  const reviewRows = productIds.length
+    ? await db.select({ productId: reviews.productId }).from(reviews).where(and(eq(reviews.userId, userId), inArray(reviews.productId, productIds)))
+    : [];
+  const reviewedIds = new Set(reviewRows.map(review => review.productId));
+  return orderRows.map(order => ({
+    ...order,
+    address: parseObject(order.address),
+    items: itemRows.filter(item => item.orderId === order.id).map(item => ({ ...item, reviewed: reviewedIds.has(item.productId) })),
+  }));
+}
+
+export async function getOrderByNumber(userId: number, orderNumber: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(orders).where(and(eq(orders.userId, userId), eq(orders.orderNumber, orderNumber))).limit(1);
+  return (await enrichOrders(userId, rows))[0];
+}
+
+export async function cancelOrder(userId: number, orderNumber: string, reason?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const existing = await db.select({ id: orders.id, status: orders.status }).from(orders).where(and(eq(orders.userId, userId), eq(orders.orderNumber, orderNumber))).limit(1);
+  if (!existing.length) throw new Error("Order not found");
+  if (existing[0].status !== "placed" && existing[0].status !== "confirmed") throw new Error("This order can no longer be cancelled because fulfilment has started.");
+  const result = await db.update(orders).set({ status: "cancelled", cancelReason: reason?.trim() || "Cancelled by customer", cancelledAt: new Date() }).where(and(eq(orders.id, existing[0].id), inArray(orders.status, ["placed", "confirmed"])));
+  if (Number(result[0]?.affectedRows ?? 0) === 0) throw new Error("This order can no longer be cancelled because fulfilment has started.");
+  return getOrderByNumber(userId, orderNumber);
+}
+
+export async function reorder(userId: number, orderNumber: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const order = await getOrderByNumber(userId, orderNumber);
+  if (!order) throw new Error("Order not found");
+  const productIds = order.items.map(item => item.productId);
+  const productRows = productIds.length ? await db.select().from(products).where(inArray(products.id, productIds)) : [];
+  const productMap = new Map(productRows.map(product => [product.id, product]));
+  const addedItems: Array<{ productId: number; productName: string; quantity: number }> = [];
+  const unavailableItems: Array<{ productId: number; productName: string; reason: string }> = [];
+  for (const item of order.items) {
+    const product = productMap.get(item.productId);
+    if (!product || product.stock <= 0) {
+      unavailableItems.push({ productId: item.productId, productName: item.productName, reason: "Currently out of stock" });
+      continue;
+    }
+    const quantity = Math.min(item.quantity, product.stock);
+    await db.insert(cartItems).values({ userId, productId: product.id, quantity }).onDuplicateKeyUpdate({ set: { quantity: sql`least(${cartItems.quantity} + ${quantity}, ${product.stock})`, updatedAt: new Date() } });
+    addedItems.push({ productId: product.id, productName: product.name, quantity });
+    if (quantity < item.quantity) unavailableItems.push({ productId: product.id, productName: product.name, reason: `Only ${product.stock} available` });
+  }
+  return { orderNumber, addedItems, unavailableItems, cart: await getCart(userId) };
+}
+
+export async function getReviewStatus(userId: number, productId: number) {
+  const db = await getDb();
+  if (!db) return { eligible: false, reviewed: false };
+  const purchase = await db.select({ id: orderItems.id }).from(orderItems).innerJoin(orders, eq(orderItems.orderId, orders.id)).where(and(eq(orders.userId, userId), eq(orderItems.productId, productId))).limit(1);
+  const existing = await db.select({ id: reviews.id }).from(reviews).where(and(eq(reviews.userId, userId), eq(reviews.productId, productId))).limit(1);
+  return { eligible: purchase.length > 0, reviewed: existing.length > 0 };
+}
+
 export async function createReview(input: { userId: number; productId: number; userName: string; rating: number; title: string; body: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
+  const status = await getReviewStatus(input.userId, input.productId);
+  if (!status.eligible) throw new Error("You can review products only after purchasing them.");
+  if (status.reviewed) throw new Error("You have already reviewed this product.");
+  const product = (await db.select({ rating: products.rating, reviewCount: products.reviewCount }).from(products).where(eq(products.id, input.productId)).limit(1))[0];
+  if (!product) throw new Error("Product not found");
   await db.insert(reviews).values({ ...input, verifiedPurchase: true });
+  const nextCount = product.reviewCount + 1;
+  const nextRating = Math.round(((product.rating * product.reviewCount) + (input.rating * 10)) / nextCount);
+  await db.update(products).set({ rating: nextRating, reviewCount: nextCount }).where(eq(products.id, input.productId));
   return listReviews(input.productId);
 }
 
@@ -366,9 +441,7 @@ export async function listOrders(userId: number) {
   const db = await getDb();
   if (!db) return [];
   const orderRows = await db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt));
-  const ids = orderRows.map(order => order.id);
-  const items = ids.length ? await db.select().from(orderItems).where(inArray(orderItems.orderId, ids)) : [];
-  return orderRows.map(order => ({ ...order, address: parseObject(order.address), items: items.filter(item => item.orderId === order.id) }));
+  return enrichOrders(userId, orderRows);
 }
 
 export async function getVendorStats() {

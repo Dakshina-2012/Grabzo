@@ -1,16 +1,20 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   addCartItem,
+  cancelOrder,
   clearCart,
   createOrder,
   createReview,
   getAdminOverview,
   getCart,
+  getOrderByNumber,
   getProductBySlug,
+  getReviewStatus,
   getVendorBySlug,
   getVendorStats,
   getWishlist,
@@ -21,10 +25,16 @@ import {
   listReviews,
   listVendors,
   removeCartItem,
+  reorder,
   toggleWishlist,
   toggleVendorFollow,
   updateCartItem,
 } from "./db";
+
+const vendorProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== "vendor" && ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Vendor access is required for this workspace." });
+  return next();
+});
 
 const productListInput = z.object({
   search: z.string().optional(),
@@ -68,14 +78,18 @@ export const appRouter = router({
   }),
   reviews: router({
     list: publicProcedure.input(z.object({ productId: z.number().int() })).query(({ input }) => listReviews(input.productId)),
-    create: protectedProcedure.input(z.object({ productId: z.number().int(), userName: z.string().min(2).max(160), rating: z.number().int().min(1).max(5), title: z.string().min(2).max(180), body: z.string().min(10).max(2000) })).mutation(({ ctx, input }) => createReview({ ...input, userId: ctx.user.id })),
+    status: protectedProcedure.input(z.object({ productId: z.number().int() })).query(({ ctx, input }) => getReviewStatus(ctx.user.id, input.productId)),
+    create: protectedProcedure.input(z.object({ productId: z.number().int(), rating: z.number().int().min(1).max(5), title: z.string().trim().min(2).max(180), body: z.string().trim().min(10).max(2000) })).mutation(({ ctx, input }) => createReview({ ...input, userId: ctx.user.id, userName: ctx.user.name ?? "Grabzo shopper" })),
   }),
   orders: router({
     list: protectedProcedure.query(({ ctx }) => listOrders(ctx.user.id)),
+    get: protectedProcedure.input(z.object({ orderNumber: z.string().min(4).max(40) })).query(({ ctx, input }) => getOrderByNumber(ctx.user.id, input.orderNumber)),
+    cancel: protectedProcedure.input(z.object({ orderNumber: z.string().min(4).max(40), reason: z.string().trim().max(500).optional() })).mutation(({ ctx, input }) => cancelOrder(ctx.user.id, input.orderNumber, input.reason)),
+    reorder: protectedProcedure.input(z.object({ orderNumber: z.string().min(4).max(40) })).mutation(({ ctx, input }) => reorder(ctx.user.id, input.orderNumber)),
     create: protectedProcedure.input(z.object({ items: z.array(z.object({ productId: z.number().int(), quantity: z.number().int().min(1).max(20) })).min(1), address: z.record(z.string(), z.string()), paymentMethod: z.enum(["upi", "credit_card", "debit_card", "cod"]) })).mutation(({ ctx, input }) => createOrder({ ...input, userId: ctx.user.id })),
   }),
   dashboard: router({
-    vendorStats: protectedProcedure.query(() => getVendorStats()),
+    vendorStats: vendorProcedure.query(() => getVendorStats()),
     adminOverview: adminProcedure.query(() => getAdminOverview()),
   }),
 });

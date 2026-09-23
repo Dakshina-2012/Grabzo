@@ -146,6 +146,8 @@ export const orders = mysqlTable(
     paymentMethod: mysqlEnum("paymentMethod", ["upi", "credit_card", "debit_card", "cod"]).notNull(),
     paymentStatus: mysqlEnum("paymentStatus", ["completed", "pending", "failed"]).default("pending").notNull(),
     paymentReference: varchar("paymentReference", { length: 80 }),
+    cancelReason: text("cancelReason"),
+    cancelledAt: timestamp("cancelledAt"),
     expectedDelivery: timestamp("expectedDelivery"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
@@ -177,7 +179,10 @@ export const reviews = mysqlTable(
     verifiedPurchase: boolean("verifiedPurchase").default(true).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
-  table => ({ productIdx: index("reviews_product_idx").on(table.productId) }),
+  table => ({
+    productIdx: index("reviews_product_idx").on(table.productId),
+    userProductUnique: uniqueIndex("reviews_user_product_unique").on(table.userId, table.productId),
+  }),
 );
 
 export type Category = typeof categories.$inferSelect;
