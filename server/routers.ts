@@ -25,6 +25,8 @@ import {
   listOrders,
   listProducts,
   listVendorShipments,
+  listCustomerReturns,
+  listVendorReturns,
   listReviews,
   listVendors,
   removeCartItem,
@@ -35,6 +37,8 @@ import {
   updateCartItem,
   unreadNotificationCount,
   updateShipmentStatus,
+  createReturnRequest,
+  reviewReturnRequest,
 } from "./db";
 
 const vendorProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -93,6 +97,8 @@ export const appRouter = router({
     events: protectedProcedure.input(z.object({ orderNumber: z.string().min(4).max(40) })).query(({ ctx, input }) => getOrderEvents(ctx.user.id, input.orderNumber)),
     cancel: protectedProcedure.input(z.object({ orderNumber: z.string().min(4).max(40), reason: z.string().trim().max(500).optional() })).mutation(({ ctx, input }) => cancelOrder(ctx.user.id, input.orderNumber, input.reason)),
     reorder: protectedProcedure.input(z.object({ orderNumber: z.string().min(4).max(40) })).mutation(({ ctx, input }) => reorder(ctx.user.id, input.orderNumber)),
+    returns: protectedProcedure.input(z.object({ orderNumber: z.string().min(4).max(40).optional() }).optional()).query(({ ctx, input }) => listCustomerReturns(ctx.user.id, input?.orderNumber)),
+    requestReturn: protectedProcedure.input(z.object({ orderNumber: z.string().min(4).max(40), reason: z.string().trim().min(3).max(180), customerNote: z.string().trim().max(1000).optional(), refundAmount: z.number().int().positive(), items: z.array(z.object({ productId: z.number().int(), quantity: z.number().int().min(1).max(20) })).min(1) })).mutation(({ ctx, input }) => createReturnRequest({ ...input, userId: ctx.user.id })),
     create: protectedProcedure.input(z.object({ items: z.array(z.object({ productId: z.number().int(), quantity: z.number().int().min(1).max(20) })).min(1), address: z.record(z.string(), z.string()), paymentMethod: z.enum(["upi", "credit_card", "debit_card", "cod"]) })).mutation(({ ctx, input }) => createOrder({ ...input, userId: ctx.user.id })),
   }),
   notifications: router({
@@ -104,7 +110,9 @@ export const appRouter = router({
     vendorStats: vendorProcedure.query(() => getVendorStats()),
     adminOverview: adminProcedure.query(() => getAdminOverview()),
     shipments: vendorProcedure.query(({ ctx }) => listVendorShipments(ctx.user.id, ctx.user.role === "admin")),
-    updateShipment: vendorProcedure.input(z.object({ orderNumber: z.string().min(4).max(40), status: z.enum(["confirmed", "packed", "shipped", "out_for_delivery", "delivered"]), note: z.string().trim().max(500).optional() })).mutation(({ ctx, input }) => updateShipmentStatus({ ...input, userId: ctx.user.id, role: ctx.user.role as "vendor" | "admin" })),
+    updateShipment: vendorProcedure.input(z.object({ orderNumber: z.string().min(4).max(40), status: z.enum(["confirmed", "packed", "shipped", "out_for_delivery", "delivered"]), note: z.string().trim().max(500).optional(), trackingCarrier: z.string().trim().max(100).optional(), trackingNumber: z.string().trim().max(120).optional(), trackingUrl: z.string().trim().url().optional() })).mutation(({ ctx, input }) => updateShipmentStatus({ ...input, userId: ctx.user.id, role: ctx.user.role as "vendor" | "admin" })),
+    returns: vendorProcedure.query(({ ctx }) => listVendorReturns(ctx.user.id, ctx.user.role === "admin")),
+    reviewReturn: vendorProcedure.input(z.object({ returnId: z.number().int().positive(), status: z.enum(["approved", "rejected", "received", "refunded"]), sellerNote: z.string().trim().max(1000).optional() })).mutation(({ ctx, input }) => reviewReturnRequest({ ...input, userId: ctx.user.id, role: ctx.user.role as "vendor" | "admin" })),
   }),
 });
 

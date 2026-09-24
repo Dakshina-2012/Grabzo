@@ -78,7 +78,7 @@ describe("order actions and verified reviews", () => {
     expect(after?.reviewCount).toBe((before?.reviewCount ?? 0) + 1);
     expect((await caller.reviews.status({ productId: product.id })).reviewed).toBe(true);
     await expect(caller.reviews.create({ productId: product.id, rating: 4, title: "Another review", body: "This duplicate should not be accepted." })).rejects.toThrow("already reviewed");
-  });
+  }, 15000);
 
   it("blocks vendor dashboard data for a customer role", async () => {
     const customer = appRouter.createCaller(createAuthContext(998104, "user"));

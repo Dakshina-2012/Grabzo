@@ -10,6 +10,7 @@ import {
   orders,
   products,
   reviews,
+  returnRequests,
   users,
   vendorFollows,
   vendors,
@@ -333,6 +334,14 @@ export async function listReviews(productId: number) {
 
 type OrderStatus = typeof orders.$inferSelect["status"];
 type EventActor = "system" | "customer" | "vendor" | "admin";
+type ReturnStatus = typeof returnRequests.$inferSelect["status"];
+
+function normalizeTrackingUrl(value?: string) {
+  if (!value?.trim()) return null;
+  const url = new URL(value.trim());
+  if (url.protocol !== "https:") throw new Error("Tracking links must use HTTPS.");
+  return url.toString();
+}
 
 const trackingCopy: Record<OrderStatus, { title: string; description: string }> = {
   placed: { title: "Order placed", description: "We received your order and are getting it ready." },
@@ -433,7 +442,7 @@ export async function listVendorShipments(userId: number, isAdmin: boolean) {
   return Array.from(byOrder.values()).map(entry => ({ ...entry.order, address: parseObject(entry.order.address), items: entry.items }));
 }
 
-export async function updateShipmentStatus(input: { userId: number; role: "vendor" | "admin"; orderNumber: string; status: Exclude<OrderStatus, "placed" | "cancelled">; note?: string }) {
+export async function updateShipmentStatus(input: { userId: number; role: "vendor" | "admin"; orderNumber: string; status: Exclude<OrderStatus, "placed" | "cancelled">; note?: string; trackingCarrier?: string; trackingNumber?: string; trackingUrl?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   const order = (await db.select().from(orders).where(eq(orders.orderNumber, input.orderNumber)).limit(1))[0];
@@ -446,13 +455,86 @@ export async function updateShipmentStatus(input: { userId: number; role: "vendo
   }
   const currentIndex = orderStatusKeys.indexOf(order.status);
   const nextIndex = orderStatusKeys.indexOf(input.status);
-  if (nextIndex <= currentIndex) throw new Error("Shipment status can only move forward.");
-  const result = await db.update(orders).set({ status: input.status }).where(and(eq(orders.id, order.id), eq(orders.status, order.status)));
+  const trackingOnly = nextIndex === currentIndex && Boolean(input.trackingCarrier?.trim() || input.trackingNumber?.trim() || input.trackingUrl?.trim());
+  if (nextIndex < currentIndex || (nextIndex === currentIndex && !trackingOnly)) throw new Error("Shipment status can only move forward.");
+  const trackingUrl = normalizeTrackingUrl(input.trackingUrl);
+  const result = await db.update(orders).set({ status: input.status, trackingCarrier: input.trackingCarrier?.trim() || order.trackingCarrier, trackingNumber: input.trackingNumber?.trim() || order.trackingNumber, trackingUrl: trackingUrl ?? order.trackingUrl }).where(and(eq(orders.id, order.id), eq(orders.status, order.status)));
   if (Number(result[0]?.affectedRows ?? 0) === 0) throw new Error("Shipment changed before this update could be saved.");
-  await recordOrderEvent(order.id, input.status, input.role, input.note?.trim() || undefined);
-  const copy = trackingCopy[input.status];
-  await notifyCustomer(order.userId, order.id, input.status === "delivered" ? "review" : "shipment", copy.title, input.note?.trim() || copy.description, `/order/${order.orderNumber}`).catch(() => undefined);
+  if (input.status !== order.status) {
+    await recordOrderEvent(order.id, input.status, input.role, input.note?.trim() || undefined);
+    const copy = trackingCopy[input.status];
+    await notifyCustomer(order.userId, order.id, input.status === "delivered" ? "review" : "shipment", copy.title, input.note?.trim() || copy.description, `/order/${order.orderNumber}`).catch(() => undefined);
+  }
   return getOrderByNumber(order.userId, order.orderNumber);
+}
+
+function parseReturnItems(value: string) {
+  try { return JSON.parse(value) as Array<{ productId: number; productName: string; quantity: number }>; } catch { return []; }
+}
+
+async function enrichReturns(rows: (typeof returnRequests.$inferSelect)[]) {
+  const db = await getDb();
+  if (!db || !rows.length) return [];
+  const orderRows = await db.select().from(orders).where(inArray(orders.id, rows.map(row => row.orderId)));
+  const orderMap = new Map(orderRows.map(order => [order.id, order]));
+  return rows.map(row => ({ ...row, items: parseReturnItems(row.items), order: orderMap.get(row.orderId) ? { ...orderMap.get(row.orderId), address: parseObject(orderMap.get(row.orderId)!.address) } : undefined }));
+}
+
+export async function listCustomerReturns(userId: number, orderNumber?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const orderFilter = orderNumber ? await db.select({ id: orders.id }).from(orders).where(and(eq(orders.userId, userId), eq(orders.orderNumber, orderNumber))).limit(1) : [];
+  const rows = await db.select().from(returnRequests).where(orderNumber ? and(eq(returnRequests.userId, userId), eq(returnRequests.orderId, orderFilter[0]?.id ?? -1)) : eq(returnRequests.userId, userId)).orderBy(desc(returnRequests.requestedAt));
+  return enrichReturns(rows);
+}
+
+export async function createReturnRequest(input: { userId: number; orderNumber: string; reason: string; customerNote?: string; refundAmount: number; items: Array<{ productId: number; quantity: number }> }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const order = (await db.select().from(orders).where(and(eq(orders.userId, input.userId), eq(orders.orderNumber, input.orderNumber))).limit(1))[0];
+  if (!order) throw new Error("Order not found");
+  if (!["delivered", "out_for_delivery"].includes(order.status)) throw new Error("Returns open after the order is delivered.");
+  if (input.refundAmount < 1 || input.refundAmount > order.total) throw new Error("Refund amount must be between ₹1 and the order total.");
+  const active = await db.select({ id: returnRequests.id }).from(returnRequests).where(and(eq(returnRequests.orderId, order.id), inArray(returnRequests.status, ["requested", "approved", "received"]))).limit(1);
+  if (active.length) throw new Error("This order already has an active return request.");
+  const orderItemRows = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id));
+  const chosen = input.items.map(item => ({ ...item, quantity: Math.max(1, item.quantity), productName: orderItemRows.find(row => row.productId === item.productId)?.productName ?? "Order item" })).filter(item => orderItemRows.some(row => row.productId === item.productId));
+  if (!chosen.length) throw new Error("Select at least one item to return.");
+  const result = await db.insert(returnRequests).values({ orderId: order.id, userId: input.userId, status: "requested", reason: input.reason.trim(), customerNote: input.customerNote?.trim() || null, items: JSON.stringify(chosen), refundAmount: input.refundAmount });
+  const id = Number(result[0].insertId);
+  await recordOrderEvent(order.id, order.status, "customer", `Return requested: ${input.reason.trim()}`);
+  await notifyCustomer(input.userId, order.id, "order", "Return request received", `We received your return request for ${order.orderNumber}.`, `/order/${order.orderNumber}`);
+  return (await db.select().from(returnRequests).where(eq(returnRequests.id, id)).limit(1))[0];
+}
+
+export async function listVendorReturns(userId: number, isAdmin: boolean) {
+  const db = await getDb();
+  if (!db) return [];
+  const actor = (await db.select({ vendorId: users.vendorId }).from(users).where(eq(users.id, userId)).limit(1))[0];
+  const rows = isAdmin ? await db.select().from(returnRequests).orderBy(desc(returnRequests.requestedAt)) : await db.select({ request: returnRequests }).from(returnRequests).innerJoin(orderItems, eq(orderItems.orderId, returnRequests.orderId)).where(eq(orderItems.vendorId, actor?.vendorId ?? 0)).orderBy(desc(returnRequests.requestedAt)).then(rows => rows.map(row => row.request));
+  return enrichReturns(rows);
+}
+
+export async function reviewReturnRequest(input: { userId: number; role: "vendor" | "admin"; returnId: number; status: "approved" | "rejected" | "received" | "refunded"; sellerNote?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const row = (await db.select().from(returnRequests).where(eq(returnRequests.id, input.returnId)).limit(1))[0];
+  if (!row) throw new Error("Return request not found");
+  if (input.role === "vendor") {
+    const actor = (await db.select({ vendorId: users.vendorId }).from(users).where(eq(users.id, input.userId)).limit(1))[0];
+    const ownership = actor?.vendorId ? await db.select({ id: orderItems.id }).from(orderItems).where(and(eq(orderItems.orderId, row.orderId), eq(orderItems.vendorId, actor.vendorId))).limit(1) : [];
+    if (!ownership.length) throw new Error("This return is not assigned to your store.");
+  }
+  const allowed: Record<ReturnStatus, ReturnStatus[]> = { requested: ["approved", "rejected"], approved: ["received"], received: ["refunded"], rejected: [], refunded: [], cancelled: [] };
+  if (!allowed[row.status].includes(input.status)) throw new Error("This return status change is not allowed.");
+  const refundReference = input.status === "refunded" ? `RF-${Date.now().toString(36).toUpperCase()}` : row.refundReference;
+  await db.update(returnRequests).set({ status: input.status, sellerNote: input.sellerNote?.trim() || row.sellerNote, reviewedAt: new Date(), refundedAt: input.status === "refunded" ? new Date() : row.refundedAt, refundReference }).where(and(eq(returnRequests.id, row.id), eq(returnRequests.status, row.status)));
+  const order = (await db.select().from(orders).where(eq(orders.id, row.orderId)).limit(1))[0];
+  if (order) {
+    await recordOrderEvent(order.id, order.status, input.role, `Return ${input.status}${input.sellerNote?.trim() ? `: ${input.sellerNote.trim()}` : ""}`);
+    await notifyCustomer(row.userId, order.id, "order", `Return ${input.status}`, input.status === "refunded" ? `Your refund of ₹${row.refundAmount.toLocaleString("en-IN")} is complete. Reference ${refundReference}.` : `Your return request is now ${input.status}.`, `/order/${order.orderNumber}`).catch(() => undefined);
+  }
+  return (await db.select().from(returnRequests).where(eq(returnRequests.id, row.id)).limit(1))[0];
 }
 
 async function enrichOrders(userId: number, orderRows: (typeof orders.$inferSelect)[]) {

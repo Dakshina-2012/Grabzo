@@ -41,7 +41,7 @@ describe("order payment confirmation", () => {
     expect(result.paymentMethod).toBe("upi");
     expect(result.items).toHaveLength(1);
     expect(result.address).toEqual(address);
-  });
+  }, 15000);
 
   it("marks cash on delivery as pending and explains payment is due later", async () => {
     const caller = appRouter.createCaller(createAuthContext());

@@ -150,6 +150,9 @@ export const orders = mysqlTable(
     cancelReason: text("cancelReason"),
     cancelledAt: timestamp("cancelledAt"),
     expectedDelivery: timestamp("expectedDelivery"),
+    trackingCarrier: varchar("trackingCarrier", { length: 100 }),
+    trackingNumber: varchar("trackingNumber", { length: 120 }),
+    trackingUrl: text("trackingUrl"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   table => ({ userIdx: index("orders_user_idx").on(table.userId) }),
@@ -185,6 +188,26 @@ export const notifications = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   table => ({ userIdx: index("notifications_user_idx").on(table.userId), orderIdx: index("notifications_order_idx").on(table.orderId) }),
+);
+
+export const returnRequests = mysqlTable(
+  "returnRequests",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    orderId: int("orderId").notNull(),
+    userId: int("userId").notNull(),
+    status: mysqlEnum("status", ["requested", "approved", "rejected", "received", "refunded", "cancelled"]).default("requested").notNull(),
+    reason: varchar("reason", { length: 180 }).notNull(),
+    customerNote: text("customerNote"),
+    sellerNote: text("sellerNote"),
+    items: text("items").notNull(),
+    refundAmount: int("refundAmount").notNull(),
+    refundReference: varchar("refundReference", { length: 100 }),
+    requestedAt: timestamp("requestedAt").defaultNow().notNull(),
+    reviewedAt: timestamp("reviewedAt"),
+    refundedAt: timestamp("refundedAt"),
+  },
+  table => ({ orderIdx: index("returns_order_idx").on(table.orderId), userIdx: index("returns_user_idx").on(table.userId) }),
 );
 
 export const orderItems = mysqlTable("orderItems", {
@@ -229,3 +252,4 @@ export type Review = typeof reviews.$inferSelect;
 export type VendorFollow = typeof vendorFollows.$inferSelect;
 export type OrderEvent = typeof orderEvents.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
+export type ReturnRequest = typeof returnRequests.$inferSelect;
