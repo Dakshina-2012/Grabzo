@@ -788,3 +788,67 @@ h1 em, h2 em { color: var(--purple); font-style: normal; }
 }
 
 .timeline-step > div { display: grid; gap: 3px; }
+
+/* Fulfillment tracking and notifications */
+.tracking-progress { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 24px 0 26px; padding: 0 4px; }
+.tracking-progress-line { position: absolute; top: 16px; left: 8%; right: 8%; height: 3px; overflow: hidden; border-radius: 999px; background: #e7e1ef; }
+.tracking-progress-line span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #6f35f5, #a57dff); transition: width .28s var(--ease-out); }
+.tracking-stage { position: relative; z-index: 1; display: grid; justify-items: center; gap: 8px; min-width: 0; text-align: center; }
+.tracking-stage-dot { width: 33px; height: 33px; display: grid; place-items: center; border: 1px solid #d7d0e5; border-radius: 50%; background: #fff; color: var(--muted); font-size: 10px; transition: color .18s var(--ease-out), background .18s var(--ease-out), border-color .18s var(--ease-out), transform .18s var(--ease-out); }
+.tracking-stage.is-complete .tracking-stage-dot { border-color: var(--purple); background: var(--purple); color: #fff; }
+.tracking-stage.is-current .tracking-stage-dot { box-shadow: 0 0 0 5px rgba(111,53,245,.12); transform: translateY(-1px); }
+.tracking-stage div { display: grid; gap: 3px; }
+.tracking-stage strong { font-size: 12px; }
+.tracking-stage.is-current strong { color: var(--purple); }
+.tracking-stage span:not(.tracking-stage-dot) { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.tracking-events { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); }
+.tracking-events-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 4px; }
+.tracking-events-heading > span:last-child { color: var(--muted); font-size: 10px; }
+.tracking-event { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.tracking-event:last-child { border-bottom: 0; padding-bottom: 0; }
+.tracking-event-dot { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: #eee8ff; color: var(--purple); }
+.tracking-event-dot--cancelled { background: #fff0ec; color: #a94b34; }
+.tracking-event div { display: grid; gap: 3px; }
+.tracking-event strong { font-size: 11px; }
+.tracking-event span:not(.tracking-event-dot) { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.tracking-event time { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.notification-action { position: relative; }
+.notification-action b { position: absolute; top: -8px; right: -9px; min-width: 16px; height: 16px; display: grid; place-items: center; padding: 0 4px; border-radius: 999px; background: var(--purple); color: #fff; font-size: 9px; line-height: 1; }
+.notifications-list { display: grid; gap: 10px; max-width: 820px; padding-bottom: 110px; }
+.notification-row { width: 100%; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 18px; border: 1px solid var(--line); background: #fff; color: var(--ink); text-align: left; cursor: pointer; transition: border-color .18s var(--ease-out), box-shadow .18s var(--ease-out), transform .18s var(--ease-out); }
+.notification-row:hover { border-color: #c8b8ef; box-shadow: 0 14px 30px rgba(36,16,92,.06); transform: translateY(-1px); }
+.notification-row.is-unread { border-color: #d8c9fa; background: #fbf9ff; }
+.notification-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; background: #eee8ff; color: var(--purple); }
+.notification-icon--review { background: #fff2c9; color: #8c6815; }
+.notification-copy { display: grid; gap: 4px; min-width: 0; }
+.notification-copy strong { font-size: 13px; }
+.notification-copy span { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.notification-copy small { color: var(--muted); font-size: 10px; }
+.notification-row > svg { color: var(--muted); }
+.shipment-console { grid-column: 1 / -1; margin-top: 18px; }
+.shipment-console .dashboard-panel-top { margin-bottom: 10px; }
+.shipment-console .dashboard-panel-top h2 { margin-top: 6px; font-size: 22px; }
+.shipment-table { display: grid; }
+.shipment-row { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 20px; align-items: center; padding: 16px 0; border-top: 1px solid var(--line); }
+.shipment-row > div { display: grid; gap: 4px; min-width: 0; }
+.shipment-row strong { font-size: 12px; }
+.shipment-row div span { overflow: hidden; color: var(--ink); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.shipment-row div small { color: var(--muted); font-size: 10px; text-transform: capitalize; }
+.shipment-row label { display: grid; gap: 5px; }
+.shipment-row select { min-height: 34px; border: 1px solid #ded7e7; padding: 0 9px; background: #fff; color: var(--ink); font: inherit; font-size: 11px; text-transform: capitalize; outline: none; }
+.shipment-row select:focus { border-color: var(--purple); box-shadow: 0 0 0 3px rgba(111,53,245,.11); }
+.shipment-console-loading { min-height: 85px; display: grid; place-items: center; }
+.shipment-empty { display: flex; align-items: center; gap: 9px; padding: 18px 0; color: var(--muted); font-size: 11px; }
+@media (max-width: 760px) {
+  .tracking-progress { gap: 5px; margin-top: 20px; padding-inline: 0; }
+  .tracking-progress-line { left: 12%; right: 12%; }
+  .tracking-stage-dot { width: 29px; height: 29px; }
+  .tracking-stage strong { font-size: 10px; }
+  .tracking-stage span:not(.tracking-stage-dot) { font-size: 9px; }
+  .tracking-event { grid-template-columns: 24px minmax(0, 1fr); }
+  .tracking-event time { grid-column: 2; }
+  .notification-row { grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; padding: 15px; }
+  .notification-icon { width: 34px; height: 34px; }
+  .shipment-row { grid-template-columns: 1fr; gap: 12px; }
+  .shipment-row select { width: 100%; }
+}

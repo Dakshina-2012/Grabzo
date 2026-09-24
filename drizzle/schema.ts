@@ -19,6 +19,7 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "vendor", "admin"]).default("user").notNull(),
+  vendorId: int("vendorId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -154,6 +155,38 @@ export const orders = mysqlTable(
   table => ({ userIdx: index("orders_user_idx").on(table.userId) }),
 );
 
+export const orderEvents = mysqlTable(
+  "orderEvents",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    orderId: int("orderId").notNull(),
+    status: mysqlEnum("status", ["placed", "confirmed", "packed", "shipped", "out_for_delivery", "delivered", "cancelled"]).notNull(),
+    title: varchar("title", { length: 180 }).notNull(),
+    description: text("description").notNull(),
+    actorRole: mysqlEnum("actorRole", ["system", "customer", "vendor", "admin"]).default("system").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => ({ orderIdx: index("order_events_order_idx").on(table.orderId) }),
+);
+
+export const notifications = mysqlTable(
+  "notifications",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    orderId: int("orderId"),
+    channel: mysqlEnum("channel", ["in_app", "email"]).default("in_app").notNull(),
+    status: mysqlEnum("status", ["unread", "read", "queued", "sent", "failed"]).default("unread").notNull(),
+    type: mysqlEnum("type", ["order", "shipment", "review"]).default("order").notNull(),
+    title: varchar("title", { length: 180 }).notNull(),
+    body: text("body").notNull(),
+    actionUrl: varchar("actionUrl", { length: 255 }),
+    readAt: timestamp("readAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => ({ userIdx: index("notifications_user_idx").on(table.userId), orderIdx: index("notifications_order_idx").on(table.orderId) }),
+);
+
 export const orderItems = mysqlTable("orderItems", {
   id: int("id").autoincrement().primaryKey(),
   orderId: int("orderId").notNull(),
@@ -194,3 +227,5 @@ export type Order = typeof orders.$inferSelect;
 export type OrderItem = typeof orderItems.$inferSelect;
 export type Review = typeof reviews.$inferSelect;
 export type VendorFollow = typeof vendorFollows.$inferSelect;
+export type OrderEvent = typeof orderEvents.$inferSelect;
+export type Notification = typeof notifications.$inferSelect;

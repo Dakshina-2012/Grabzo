@@ -4,6 +4,8 @@ import {
   cartItems,
   categories,
   InsertUser,
+  notifications,
+  orderEvents,
   orderItems,
   orders,
   products,
@@ -329,6 +331,130 @@ export async function listReviews(productId: number) {
   return db.select().from(reviews).where(eq(reviews.productId, productId)).orderBy(desc(reviews.createdAt));
 }
 
+type OrderStatus = typeof orders.$inferSelect["status"];
+type EventActor = "system" | "customer" | "vendor" | "admin";
+
+const trackingCopy: Record<OrderStatus, { title: string; description: string }> = {
+  placed: { title: "Order placed", description: "We received your order and are getting it ready." },
+  confirmed: { title: "Order confirmed", description: "The seller confirmed your order." },
+  packed: { title: "Order packed", description: "Your parcel is packed and ready to leave the seller." },
+  shipped: { title: "Order shipped", description: "Your order is on the way." },
+  out_for_delivery: { title: "Out for delivery", description: "Your order is arriving today." },
+  delivered: { title: "Order delivered", description: "Your order has arrived. Enjoy your new find." },
+  cancelled: { title: "Order cancelled", description: "This order was cancelled and will not be delivered." },
+};
+
+async function recordOrderEvent(orderId: number, status: OrderStatus, actorRole: EventActor, description?: string) {
+  const db = await getDb();
+  if (!db) return;
+  const copy = trackingCopy[status];
+  await db.insert(orderEvents).values({ orderId, status, title: copy.title, description: description ?? copy.description, actorRole });
+}
+
+async function notifyCustomer(userId: number, orderId: number, type: "order" | "shipment" | "review", title: string, body: string, actionUrl: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(notifications).values({ userId, orderId, channel: "in_app", status: "unread", type, title, body, actionUrl });
+
+  const providerUrl = process.env.TRANSACTIONAL_EMAIL_WEBHOOK_URL;
+  if (!providerUrl) return;
+  const email = (await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1))[0]?.email;
+  if (!email) return;
+  const result = await db.insert(notifications).values({ userId, orderId, channel: "email", status: "queued", type, title, body, actionUrl });
+  const emailNotificationId = Number(result[0].insertId);
+  try {
+    const response = await fetch(providerUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ to: email, subject: title, text: body, orderId, actionUrl }), signal: AbortSignal.timeout(3500) });
+    await db.update(notifications).set({ status: response.ok ? "sent" : "failed" }).where(eq(notifications.id, emailNotificationId));
+  } catch {
+    await db.update(notifications).set({ status: "failed" }).where(eq(notifications.id, emailNotificationId));
+  }
+}
+
+async function fallbackTrackingEvents(order: typeof orders.$inferSelect) {
+  const currentIndex = order.status === "cancelled" ? orderStatusKeys.length : orderStatusKeys.indexOf(order.status);
+  const statuses = order.status === "cancelled" ? [...orderStatusKeys, "cancelled" as const] : orderStatusKeys.slice(0, currentIndex + 1);
+  return statuses.map(status => ({
+    id: 0,
+    orderId: order.id,
+    status,
+    title: trackingCopy[status].title,
+    description: trackingCopy[status].description,
+    actorRole: "system" as const,
+    createdAt: order.createdAt,
+  }));
+}
+
+const orderStatusKeys: OrderStatus[] = ["placed", "confirmed", "packed", "shipped", "out_for_delivery", "delivered"];
+
+export async function getOrderEvents(userId: number, orderNumber: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const order = (await db.select().from(orders).where(and(eq(orders.userId, userId), eq(orders.orderNumber, orderNumber))).limit(1))[0];
+  if (!order) return [];
+  const events = await db.select().from(orderEvents).where(eq(orderEvents.orderId, order.id)).orderBy(asc(orderEvents.createdAt), asc(orderEvents.id));
+  return events.length ? events : fallbackTrackingEvents(order);
+}
+
+export async function listNotifications(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(notifications).where(and(eq(notifications.userId, userId), eq(notifications.channel, "in_app"))).orderBy(desc(notifications.createdAt)).limit(50);
+}
+
+export async function unreadNotificationCount(userId: number) {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db.select({ count: sql<number>`count(*)` }).from(notifications).where(and(eq(notifications.userId, userId), eq(notifications.channel, "in_app"), eq(notifications.status, "unread")));
+  return Number(rows[0]?.count ?? 0);
+}
+
+export async function markNotificationRead(userId: number, notificationId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const where = notificationId ? and(eq(notifications.userId, userId), eq(notifications.id, notificationId), eq(notifications.channel, "in_app")) : and(eq(notifications.userId, userId), eq(notifications.channel, "in_app"), eq(notifications.status, "unread"));
+  await db.update(notifications).set({ status: "read", readAt: new Date() }).where(where);
+  return listNotifications(userId);
+}
+
+export async function listVendorShipments(userId: number, isAdmin: boolean) {
+  const db = await getDb();
+  if (!db) return [];
+  const actor = (await db.select({ role: users.role, vendorId: users.vendorId }).from(users).where(eq(users.id, userId)).limit(1))[0];
+  if (!isAdmin && !actor?.vendorId) return [];
+  const rows = isAdmin
+    ? await db.select({ order: orders, item: orderItems }).from(orders).innerJoin(orderItems, eq(orderItems.orderId, orders.id)).orderBy(desc(orders.createdAt))
+    : await db.select({ order: orders, item: orderItems }).from(orders).innerJoin(orderItems, eq(orderItems.orderId, orders.id)).where(eq(orderItems.vendorId, actor?.vendorId ?? 0)).orderBy(desc(orders.createdAt));
+  const byOrder = new Map<number, { order: typeof orders.$inferSelect; items: Array<typeof orderItems.$inferSelect> }>();
+  for (const row of rows) {
+    const current = byOrder.get(row.order.id) ?? { order: row.order, items: [] };
+    current.items.push(row.item);
+    byOrder.set(row.order.id, current);
+  }
+  return Array.from(byOrder.values()).map(entry => ({ ...entry.order, address: parseObject(entry.order.address), items: entry.items }));
+}
+
+export async function updateShipmentStatus(input: { userId: number; role: "vendor" | "admin"; orderNumber: string; status: Exclude<OrderStatus, "placed" | "cancelled">; note?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const order = (await db.select().from(orders).where(eq(orders.orderNumber, input.orderNumber)).limit(1))[0];
+  if (!order) throw new Error("Order not found");
+  if (order.status === "cancelled" || order.status === "delivered") throw new Error("This order can no longer be updated.");
+  if (input.role === "vendor") {
+    const actor = (await db.select({ vendorId: users.vendorId }).from(users).where(eq(users.id, input.userId)).limit(1))[0];
+    const ownership = actor?.vendorId ? await db.select({ id: orderItems.id }).from(orderItems).where(and(eq(orderItems.orderId, order.id), eq(orderItems.vendorId, actor.vendorId))).limit(1) : [];
+    if (!ownership.length) throw new Error("This shipment is not assigned to your store.");
+  }
+  const currentIndex = orderStatusKeys.indexOf(order.status);
+  const nextIndex = orderStatusKeys.indexOf(input.status);
+  if (nextIndex <= currentIndex) throw new Error("Shipment status can only move forward.");
+  const result = await db.update(orders).set({ status: input.status }).where(and(eq(orders.id, order.id), eq(orders.status, order.status)));
+  if (Number(result[0]?.affectedRows ?? 0) === 0) throw new Error("Shipment changed before this update could be saved.");
+  await recordOrderEvent(order.id, input.status, input.role, input.note?.trim() || undefined);
+  const copy = trackingCopy[input.status];
+  await notifyCustomer(order.userId, order.id, input.status === "delivered" ? "review" : "shipment", copy.title, input.note?.trim() || copy.description, `/order/${order.orderNumber}`).catch(() => undefined);
+  return getOrderByNumber(order.userId, order.orderNumber);
+}
+
 async function enrichOrders(userId: number, orderRows: (typeof orders.$inferSelect)[]) {
   const db = await getDb();
   if (!db || !orderRows.length) return [];
@@ -361,6 +487,8 @@ export async function cancelOrder(userId: number, orderNumber: string, reason?: 
   if (existing[0].status !== "placed" && existing[0].status !== "confirmed") throw new Error("This order can no longer be cancelled because fulfilment has started.");
   const result = await db.update(orders).set({ status: "cancelled", cancelReason: reason?.trim() || "Cancelled by customer", cancelledAt: new Date() }).where(and(eq(orders.id, existing[0].id), inArray(orders.status, ["placed", "confirmed"])));
   if (Number(result[0]?.affectedRows ?? 0) === 0) throw new Error("This order can no longer be cancelled because fulfilment has started.");
+  await recordOrderEvent(existing[0].id, "cancelled", "customer", reason?.trim() || undefined);
+  await notifyCustomer(userId, existing[0].id, "order", "Order cancelled", "Your order was cancelled successfully.", `/order/${orderNumber}`).catch(() => undefined);
   return getOrderByNumber(userId, orderNumber);
 }
 
@@ -434,6 +562,8 @@ export async function createOrder(input: { userId: number; items: Array<{ produc
   const orderId = Number(result[0].insertId);
   await db.insert(orderItems).values(normalizedItems.map(item => ({ orderId, productId: item.product?.id ?? 0, productName: item.product?.name ?? "", vendorId: item.product?.vendorId ?? 0, vendorName: item.product?.vendorName ?? "", price: item.product?.price ?? 0, quantity: item.quantity, image: parseList(item.product?.images)[0] ?? "" })));
   await db.delete(cartItems).where(eq(cartItems.userId, input.userId));
+  await recordOrderEvent(orderId, "placed", "system");
+  await notifyCustomer(input.userId, orderId, "order", "Order confirmed", `Your order ${orderNumber} was placed successfully.`, `/order/${orderNumber}`).catch(() => undefined);
   return { orderId, orderNumber, subtotal, discount, delivery, tax, total, address: input.address, paymentMethod: input.paymentMethod, paymentStatus, paymentReference, items: normalizedItems.map(item => ({ productId: item.product?.id ?? 0, productName: item.product?.name ?? "", quantity: item.quantity, price: item.product?.price ?? 0, image: parseList(item.product?.images)[0] ?? "" })), expectedDelivery, status: "placed" };
 }
 

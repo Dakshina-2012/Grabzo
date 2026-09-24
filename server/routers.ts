@@ -12,6 +12,7 @@ import {
   createReview,
   getAdminOverview,
   getCart,
+  getOrderEvents,
   getOrderByNumber,
   getProductBySlug,
   getReviewStatus,
@@ -20,15 +21,20 @@ import {
   getWishlist,
   isFollowingVendor,
   listCategories,
+  listNotifications,
   listOrders,
   listProducts,
+  listVendorShipments,
   listReviews,
   listVendors,
   removeCartItem,
+  markNotificationRead,
   reorder,
   toggleWishlist,
   toggleVendorFollow,
   updateCartItem,
+  unreadNotificationCount,
+  updateShipmentStatus,
 } from "./db";
 
 const vendorProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -84,13 +90,21 @@ export const appRouter = router({
   orders: router({
     list: protectedProcedure.query(({ ctx }) => listOrders(ctx.user.id)),
     get: protectedProcedure.input(z.object({ orderNumber: z.string().min(4).max(40) })).query(({ ctx, input }) => getOrderByNumber(ctx.user.id, input.orderNumber)),
+    events: protectedProcedure.input(z.object({ orderNumber: z.string().min(4).max(40) })).query(({ ctx, input }) => getOrderEvents(ctx.user.id, input.orderNumber)),
     cancel: protectedProcedure.input(z.object({ orderNumber: z.string().min(4).max(40), reason: z.string().trim().max(500).optional() })).mutation(({ ctx, input }) => cancelOrder(ctx.user.id, input.orderNumber, input.reason)),
     reorder: protectedProcedure.input(z.object({ orderNumber: z.string().min(4).max(40) })).mutation(({ ctx, input }) => reorder(ctx.user.id, input.orderNumber)),
     create: protectedProcedure.input(z.object({ items: z.array(z.object({ productId: z.number().int(), quantity: z.number().int().min(1).max(20) })).min(1), address: z.record(z.string(), z.string()), paymentMethod: z.enum(["upi", "credit_card", "debit_card", "cod"]) })).mutation(({ ctx, input }) => createOrder({ ...input, userId: ctx.user.id })),
   }),
+  notifications: router({
+    list: protectedProcedure.query(({ ctx }) => listNotifications(ctx.user.id)),
+    unreadCount: protectedProcedure.query(({ ctx }) => unreadNotificationCount(ctx.user.id)),
+    markRead: protectedProcedure.input(z.object({ notificationId: z.number().int().positive().optional() }).optional()).mutation(({ ctx, input }) => markNotificationRead(ctx.user.id, input?.notificationId)),
+  }),
   dashboard: router({
     vendorStats: vendorProcedure.query(() => getVendorStats()),
     adminOverview: adminProcedure.query(() => getAdminOverview()),
+    shipments: vendorProcedure.query(({ ctx }) => listVendorShipments(ctx.user.id, ctx.user.role === "admin")),
+    updateShipment: vendorProcedure.input(z.object({ orderNumber: z.string().min(4).max(40), status: z.enum(["confirmed", "packed", "shipped", "out_for_delivery", "delivered"]), note: z.string().trim().max(500).optional() })).mutation(({ ctx, input }) => updateShipmentStatus({ ...input, userId: ctx.user.id, role: ctx.user.role as "vendor" | "admin" })),
   }),
 });
 
