@@ -17,6 +17,8 @@ export const users = mysqlTable("users", {
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
+  emailNormalized: varchar("emailNormalized", { length: 320 }).unique(),
+  passwordHash: text("passwordHash"),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "vendor", "admin"]).default("user").notNull(),
   vendorId: int("vendorId"),

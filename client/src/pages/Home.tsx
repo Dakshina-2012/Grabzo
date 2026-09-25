@@ -226,8 +226,39 @@ function AuthGate({ children, title = "Sign in to keep going." }: { children?: R
   return <>{children}</>;
 }
 
-function LoginLanding({ user, isAuthenticated, logout }: { user: any; isAuthenticated: boolean; logout: () => Promise<void> }) {
-  return <div className="login-landing"><div className="login-landing-orbit login-landing-orbit--one" /><div className="login-landing-orbit login-landing-orbit--two" /><div className="login-card"><Logo compact /><span className="eyebrow">Welcome to Grabzo</span><h1>Shop more.<br /><em>Live better.</em></h1><p>Sign in to keep your finds, bag, wishlist, and orders together — or create a new account to start your edit.</p>{isAuthenticated && <div className="active-session"><CircleUserRound size={16} /><span>Currently signed in as <strong>{user?.name ?? "an existing user"}</strong>.</span><button className="text-link" onClick={() => logout().then(() => toast.success("You’ve been logged out."))}>Log out</button></div>}<div className="login-choice-grid"><button className="login-choice" onClick={() => startLogin()}><CircleUserRound size={22} /><span><strong>Existing user</strong><small>Sign in to your Grabzo account</small></span><ArrowRight size={16} /></button><button className="login-choice login-choice--accent" onClick={() => startLogin()}><UserPlus size={22} /><span><strong>Create new account</strong><small>Join Grabzo and save your discoveries</small></span><ArrowRight size={16} /></button></div><span className="login-note"><ShieldCheck size={14} /> Secure sign-in is handled by Manus OAuth.</span><Link className="login-browse" href="/products">Browse the marketplace first <ArrowUpRight size={14} /></Link></div></div>;
+function LoginLanding() {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [formError, setFormError] = useState("");
+  const [, navigate] = useLocation();
+  const utils = trpc.useUtils();
+  const login = trpc.auth.login.useMutation();
+  const register = trpc.auth.register.useMutation();
+  const pending = login.isPending || register.isPending;
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    setFormError("");
+    if (mode === "register" && password !== confirmPassword) {
+      setFormError("Your passwords do not match.");
+      return;
+    }
+    const options = {
+      onSuccess: async () => {
+        await utils.auth.me.invalidate();
+        toast.success(mode === "login" ? "Welcome back to Grabzo." : "Your Grabzo account is ready.");
+        navigate("/products");
+      },
+      onError: (error: { message: string }) => setFormError(error.message),
+    };
+    if (mode === "login") login.mutate({ email, password }, options);
+    else register.mutate({ name, email, password }, options);
+  };
+
+  return <div className="login-landing"><div className="login-landing-orbit login-landing-orbit--one" /><div className="login-landing-orbit login-landing-orbit--two" /><div className="login-card login-card--native"><Logo compact /><span className="eyebrow">Your Grabzo account</span><h1>{mode === "login" ? <>Shop more.<br /><em>Live better.</em></> : <>Make room for<br /><em>good finds.</em></>}</h1><p>{mode === "login" ? "Sign in to keep your finds, bag, wishlist, and orders together." : "Create a Grabzo account and keep your favourite discoveries close."}</p><div className="auth-mode-toggle" role="tablist" aria-label="Account access"><button className={mode === "login" ? "is-active" : ""} onClick={() => { setMode("login"); setFormError(""); }} role="tab" aria-selected={mode === "login"}>Sign in</button><button className={mode === "register" ? "is-active" : ""} onClick={() => { setMode("register"); setFormError(""); }} role="tab" aria-selected={mode === "register"}>Create account</button></div><form className="grabzo-auth-form" onSubmit={submit}>{mode === "register" && <label>Full name<input value={name} onChange={event => setName(event.target.value)} autoComplete="name" required minLength={2} placeholder="Your name" /></label>}<label>Email address<input type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="email" required placeholder="you@example.com" /></label><label>Password<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={mode === "register" ? 8 : 1} placeholder={mode === "register" ? "At least 8 characters" : "Your password"} /></label>{mode === "register" && <label>Confirm password<input type="password" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} autoComplete="new-password" required minLength={8} placeholder="Repeat your password" /></label>}{formError && <p className="grabzo-auth-error" role="alert">{formError}</p>}<button className="button button--primary button--full grabzo-auth-submit" disabled={pending} type="submit">{pending ? "Please wait…" : mode === "login" ? "Sign in to Grabzo" : "Create my account"}<ArrowRight size={16} /></button></form><span className="login-note"><ShieldCheck size={14} /> Secure account access, made for Grabzo.</span><Link className="login-browse" href="/products">Browse the marketplace first <ArrowUpRight size={14} /></Link></div></div>;
 }
 
 function CartPage({ guest, onUpdateGuest, onClearGuest, onAdd, onLogin }: { guest: GuestCartLine[]; onUpdateGuest: (id: number, quantity: number) => void; onClearGuest: () => void; onAdd: (product: any) => void; onLogin: () => void }) {
@@ -261,7 +292,7 @@ function AccountPage() {
   const { user, isAuthenticated, loading, logout } = useAuth();
   const [, navigate] = useLocation();
   if (loading) return <div className="container loading-page"><div className="spinner" /></div>;
-  if (!isAuthenticated) return <><PageIntro eyebrow="Your Grabzo account" title="Make room for good finds." description="Save your edit, sync your bag, and keep every order in one calm place." /><div className="container account-choice-grid"><button className="account-choice" onClick={() => startLogin()}><span className="account-choice-icon"><CircleUserRound size={24} /></span><span className="eyebrow">Already have an account?</span><h2>Sign in</h2><p>Pick up where you left off and see your saved products, bag, and orders.</p><span className="button button--primary">Existing user <ArrowRight size={16} /></span></button><button className="account-choice account-choice--accent" onClick={() => startLogin()}><span className="account-choice-icon"><UserPlus size={24} /></span><span className="eyebrow">New to Grabzo?</span><h2>Create your account</h2><p>Join the marketplace edit and keep your favourite discoveries close.</p><span className="button button--dark">New user <ArrowRight size={16} /></span></button></div><div className="container account-note"><ShieldCheck size={17} /><span>Secure sign-in is handled by Manus OAuth. Grabzo never stores your password in the marketplace.</span></div></>;
+  if (!isAuthenticated) return <><PageIntro eyebrow="Your Grabzo account" title="Make room for good finds." description="Save your edit, sync your bag, and keep every order in one calm place." /><div className="container account-choice-grid"><button className="account-choice" onClick={() => startLogin()}><span className="account-choice-icon"><CircleUserRound size={24} /></span><span className="eyebrow">Already have an account?</span><h2>Sign in</h2><p>Pick up where you left off and see your saved products, bag, and orders.</p><span className="button button--primary">Existing user <ArrowRight size={16} /></span></button><button className="account-choice account-choice--accent" onClick={() => startLogin()}><span className="account-choice-icon"><UserPlus size={24} /></span><span className="eyebrow">New to Grabzo?</span><h2>Create your account</h2><p>Join the marketplace edit and keep your favourite discoveries close.</p><span className="button button--dark">New user <ArrowRight size={16} /></span></button></div><div className="container account-note"><ShieldCheck size={17} /><span>Secure, native Grabzo account access.</span></div></>;
   return <><PageIntro eyebrow="Your Grabzo account" title={`Good to see you, ${user?.name?.split(" ")[0] ?? "there"}.`} description="Manage your profile, saved products, and every order from one place." action={<button className="button button--dark" onClick={() => logout().then(() => toast.success("You’ve been logged out."))}><LogOut size={16} /> Log out</button>} /><div className="container account-dashboard"><div className="account-profile-card"><span className="account-avatar">{(user?.name ?? "G").slice(0, 1).toUpperCase()}</span><div><span className="eyebrow">Signed in as</span><h2>{user?.name ?? "Grabzo shopper"}</h2><p>{user?.email ?? "Your secure Grabzo account"}</p></div><span className="verified-badge"><Check size={12} /> Secure account</span></div><div className="account-link-grid"><button onClick={() => navigate("/orders")}><ReceiptText size={20} /><strong>Your orders</strong><span>Track deliveries and payment status.</span><ArrowUpRight size={15} /></button><button onClick={() => navigate("/wishlist")}><Heart size={20} /><strong>Wishlist</strong><span>Return to the things you saved.</span><ArrowUpRight size={15} /></button><button onClick={() => navigate("/cart")}><ShoppingBag size={20} /><strong>Your bag</strong><span>Review your current edit.</span><ArrowUpRight size={15} /></button><button onClick={() => navigate("/seller")}><Store size={20} /><strong>Sell on Grabzo</strong><span>Explore the seller studio.</span><ArrowUpRight size={15} /></button></div></div></>;
 }
 
@@ -396,7 +427,7 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const guest = useGuestCart();
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { data: homeProducts = [] } = trpc.catalog.products.useQuery({ featured: true, limit: 8 });
   const { data: allProducts = [] } = trpc.catalog.products.useQuery({ limit: 60 });
   const { data: categories = [] } = trpc.catalog.categories.useQuery();
@@ -412,7 +443,7 @@ export default function Home() {
   const commonProps = { onAdd: addToCart, onWishlist: toggleWishlist, wishedIds };
   let page: React.ReactNode;
   const path = location.split("?")[0];
-  if (path === "/") return <LoginLanding user={user} isAuthenticated={isAuthenticated} logout={logout} />;
+  if (path === "/") return <LoginLanding />;
   if (path === "/products") page = <ProductsPage {...commonProps} />;
   else if (path.startsWith("/product/")) page = <ProductPage {...commonProps} />;
   else if (path === "/vendors") page = <VendorsPage />;

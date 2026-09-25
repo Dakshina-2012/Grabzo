@@ -50,6 +50,13 @@
       "when": 1790228383409,
       "tag": "0006_colorful_barracuda",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1790325763156,
+      "tag": "0007_bent_strong_guy",
+      "breakpoints": true
     }
   ]
 }

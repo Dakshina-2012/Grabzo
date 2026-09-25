@@ -3,7 +3,9 @@ import { TRPCError } from "@trpc/server";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
+import { sdk } from "./_core/sdk";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { hashPassword, normalizeEmail, verifyPassword } from "./auth";
 import {
   addCartItem,
   cancelOrder,
@@ -38,6 +40,9 @@ import {
   unreadNotificationCount,
   updateShipmentStatus,
   createReturnRequest,
+  createLocalUser,
+  getUserByEmail,
+  upsertUser,
   reviewReturnRequest,
 } from "./db";
 
@@ -60,6 +65,28 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    register: publicProcedure.input(z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().max(320), password: z.string().min(8).max(128) })).mutation(async ({ ctx, input }) => {
+      const emailNormalized = normalizeEmail(input.email);
+      if (await getUserByEmail(emailNormalized)) throw new TRPCError({ code: "CONFLICT", message: "An account with this email already exists." });
+      try {
+        const user = await createLocalUser({ name: input.name.trim(), email: emailNormalized, emailNormalized, passwordHash: await hashPassword(input.password) });
+        if (!user) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Unable to create your account." });
+        const token = await sdk.signSession({ openId: user.openId, appId: "grabzo", name: user.name ?? input.name.trim() });
+        ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: 1000 * 60 * 60 * 24 * 365 });
+        return { success: true, user } as const;
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "CONFLICT", message: "An account with this email already exists." });
+      }
+    }),
+    login: publicProcedure.input(z.object({ email: z.string().trim().email().max(320), password: z.string().min(1).max(128) })).mutation(async ({ ctx, input }) => {
+      const user = await getUserByEmail(normalizeEmail(input.email));
+      if (!user || !(await verifyPassword(input.password, user.passwordHash))) throw new TRPCError({ code: "UNAUTHORIZED", message: "Email or password is incorrect." });
+      await upsertUser({ openId: user.openId, lastSignedIn: new Date() });
+      const token = await sdk.signSession({ openId: user.openId, appId: "grabzo", name: user.name ?? "Grabzo shopper" });
+      ctx.res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(ctx.req), maxAge: 1000 * 60 * 60 * 24 * 365 });
+      return { success: true, user } as const;
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });

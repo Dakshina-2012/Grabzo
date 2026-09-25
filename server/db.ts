@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import { randomUUID } from "node:crypto";
 import {
   cartItems,
   categories,
@@ -150,6 +151,29 @@ export async function getUserByOpenId(openId: string) {
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
   return result[0];
+}
+
+export async function getUserByEmail(emailNormalized: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.emailNormalized, emailNormalized)).limit(1);
+  return result[0];
+}
+
+export async function createLocalUser(input: { name: string; email: string; emailNormalized: string; passwordHash: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const openId = `grabzo_${randomUUID()}`;
+  await db.insert(users).values({
+    openId,
+    name: input.name,
+    email: input.email,
+    emailNormalized: input.emailNormalized,
+    passwordHash: input.passwordHash,
+    loginMethod: "grabzo",
+    lastSignedIn: new Date(),
+  });
+  return getUserByOpenId(openId);
 }
 
 export async function ensureSeedData() {
