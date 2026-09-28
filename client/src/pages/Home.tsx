@@ -44,7 +44,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 
-const LOGO = "/manus-storage/grabzo-logo_c1b7cc5c.jpeg";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+const LOGO = `${API_BASE_URL}/manus-storage/grabzo-logo_c1b7cc5c.jpeg`;
 const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1400&q=85";
 const money = (value = 0) => `₹${value.toLocaleString("en-IN")}`;
 const rating = (value = 0) => (value / 10).toFixed(1);
