@@ -6,8 +6,9 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 
 function Router() {
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   return (
-    <WouterRouter base={import.meta.env.BASE_URL}>
+    <WouterRouter base={base}>
       <Switch>
         <Route path="/" component={Home} />
         <Route component={Home} />
