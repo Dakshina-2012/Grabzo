@@ -443,7 +443,7 @@ export default function Home() {
   const cartCount = isAuthenticated ? undefined : guest.count;
   const commonProps = { onAdd: addToCart, onWishlist: toggleWishlist, wishedIds };
   let page: React.ReactNode;
-  const path = location.split("?")[0];
+  const path = location.split("?")[0].replace(/\/+$/, "") || "/";
   if (path === "/" || path === "/login" || path === "/sign-in" || path === "/register" || path === "/create-account") return <LoginLanding />;
   if (path === "/products") page = <ProductsPage {...commonProps} />;
   else if (path.startsWith("/product/")) page = <ProductPage {...commonProps} />;
